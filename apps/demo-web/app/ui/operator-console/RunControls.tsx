@@ -2,7 +2,6 @@
 
 import type {
   BrowserMode,
-  ExecutionMode,
   ResponseTurnBudget,
   ScenarioManifest,
 } from "@cua-sample/replay-schema";
@@ -19,10 +18,8 @@ type RunControlsProps = ActionButtonsProps & {
   browserMode: BrowserMode;
   controlsLocked: boolean;
   maxResponseTurns: ResponseTurnBudget;
-  mode: ExecutionMode;
   onBrowserModeChange: (value: BrowserMode) => void;
   onMaxResponseTurnsChange: (value: ResponseTurnBudget) => void;
-  onModeChange: (value: ExecutionMode) => void;
   onPromptChange: (value: string) => void;
   onScenarioChange: (value: string) => void;
   onVerificationEnabledChange: (value: boolean) => void;
@@ -131,10 +128,8 @@ export function RunControls({
   browserMode,
   controlsLocked,
   maxResponseTurns,
-  mode,
   onBrowserModeChange,
   onMaxResponseTurnsChange,
-  onModeChange,
   onPromptChange,
   onScenarioChange,
   onVerificationEnabledChange,
@@ -201,16 +196,9 @@ export function RunControls({
                 text={engineHelpText}
               />
             </div>
-            <SegmentControl
-              ariaLabel="Execution mode"
-              disabled={controlsLocked}
-              onChange={onModeChange}
-              options={[
-                { label: "Code", value: "code" },
-                { label: "Native", value: "native" },
-              ]}
-              value={mode}
-            />
+            <select aria-label="Execution mode" defaultValue="native" disabled>
+              <option value="native">Native</option>
+            </select>
           </div>
 
           <div className="railField">
