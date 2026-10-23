@@ -8,7 +8,6 @@ import {
   scenarioWorkspaceStateSchema,
   startRunResponseSchema,
   type BrowserMode,
-  type ExecutionMode,
   type ResponseTurnBudget,
   type RunDetail,
   type RunEvent,
@@ -80,9 +79,6 @@ export function useRunStream({
   const initialScenario = scenarios[0] ?? null;
   const [selectedScenarioId, setSelectedScenarioId] = useState(
     initialScenario?.id ?? "",
-  );
-  const [mode, setMode] = useState<ExecutionMode>(
-    initialScenario?.defaultMode ?? "code",
   );
   const [browserMode, setBrowserMode] = useState<BrowserMode>("headless");
   const [verificationEnabled, setVerificationEnabled] = useState(false);
@@ -371,7 +367,6 @@ export function useRunStream({
       setRunEvents([]);
     }
 
-    setMode(nextScenario.defaultMode);
     setPrompt(nextScenario.defaultPrompt);
   };
 
@@ -410,7 +405,7 @@ export function useRunStream({
           body: JSON.stringify({
             browserMode,
             maxResponseTurns,
-            mode,
+            mode: "native",
             model: defaultRunModel,
             prompt,
             scenarioId: selectedScenario.id,
@@ -666,7 +661,6 @@ export function useRunStream({
     latestScreenshot,
     matchingWorkspaceState,
     maxResponseTurns,
-    mode,
     pendingAction,
     prompt,
     runnerOnline,
@@ -679,7 +673,6 @@ export function useRunStream({
     selectedScenarioId,
     setBrowserMode,
     setMaxResponseTurns,
-    setMode,
     setPrompt,
     setStreamLogs,
     setVerificationEnabled,

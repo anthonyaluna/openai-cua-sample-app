@@ -11,7 +11,7 @@ The legacy Python sample does not ship in this release branch. Keep that history
 ## What This Repo Demonstrates
 
 - how to integrate the Responses API from one canonical place: `packages/runner-core/src/responses-loop.ts`
-- how to switch between `code` mode and `native` computer mode against the same browser lab
+- how to run remote browser tasks through native computer mode; remote code mode is disabled
 - how to define scenario manifests, launch isolated run workspaces, and verify outcomes
 - how to build an operator-facing console that is understandable even when the runner is offline or a run fails
 
@@ -90,10 +90,10 @@ OPENAI_API_KEY=your_key_here pnpm test:live
 
 ## Execution Modes
 
-- `native`: exposes the Responses API computer tool directly. The model requests clicks, drags, typing, waits, and screenshots against the live browser session.
-- `code`: exposes a persistent Playwright JavaScript REPL through `exec_js`. The model scripts the browser rather than emitting raw computer actions.
+- `native`: the remote runner and operator console use the Responses API computer tool directly. The model requests clicks, drags, typing, waits, and screenshots against the live browser session.
+- `code`: retained for direct in-process development and tests, but disabled for remote `POST /api/runs` requests. The code executor must not be exposed remotely until it has a suitable isolated execution boundary.
 
-Both modes use the same scenario manifests and replay pipeline. `native` is the closest sample of the computer tool itself. `code` is the clearest sample of a browser REPL harness.
+The scenario manifests and replay pipeline support both modes internally; the public remote API currently accepts only `native`.
 
 ## Official Scenarios
 

@@ -47,7 +47,7 @@ describe("runner server", () => {
         payload: {
           browserMode: "headless",
           maxResponseTurns: 17,
-          mode: "code",
+          mode: "native",
           prompt: [
             "Reorganize the board to match this requested final board state exactly.",
             "",
@@ -111,6 +111,32 @@ describe("runner server", () => {
 
       expect(response.statusCode).toBe(200);
       expect(scenariosResponseSchema.parse(response.json())).toHaveLength(3);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("rejects code mode on the remote run API", async () => {
+    const app = createServer();
+
+    try {
+      const response = await app.inject({
+        method: "POST",
+        payload: {
+          browserMode: "headless",
+          mode: "code",
+          prompt: "Run the scenario.",
+          scenarioId: "kanban-reprioritize-sprint",
+        },
+        url: "/api/runs",
+      });
+
+      expect(response.statusCode).toBe(403);
+      expect(runnerErrorResponseSchema.parse(response.json())).toMatchObject({
+        code: "remote_code_mode_disabled",
+        error: "Code mode is disabled for remote run requests.",
+        hint: "Use native computer mode for remote runs.",
+      });
     } finally {
       await app.close();
     }
