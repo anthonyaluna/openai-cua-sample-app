@@ -59,6 +59,6 @@ How verification works:
 
 ## Notes On Modes
 
-- `code` mode uses the browser REPL tool (`exec_js`) to drive the same lab.
-- `native` mode uses the computer tool directly.
+- Remote run requests and the operator console use `native` mode, which drives the lab through the computer tool.
+- Remote `code` mode (`exec_js`) is disabled. Direct in-process code execution remains available only for local development and tests.
 - Verification is the same either way because it reads the final lab state, not the agent transcript.

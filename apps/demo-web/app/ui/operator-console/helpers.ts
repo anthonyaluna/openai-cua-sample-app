@@ -21,7 +21,7 @@ export const defaultMaxResponseTurns = Number(
   process.env.NEXT_PUBLIC_CUA_DEFAULT_MAX_RESPONSE_TURNS ?? "24",
 ) as ResponseTurnBudget;
 export const engineHelpText =
-  "Native drives the browser runtime directly for clicks, drags, typing, and screenshots. Code uses a persistent Playwright REPL for scripted browser control.";
+  "Remote runs use the native computer tool for clicks, drags, typing, and screenshots. Code mode is disabled remotely until a suitable isolated execution boundary exists.";
 export const browserHelpText =
   "Headless runs the browser off-screen. Visible opens the browser window so you can watch the session live as it runs.";
 export const turnBudgetHelpText =
@@ -39,6 +39,8 @@ function titleForIssueCode(code: string) {
       return "Runner missing API key";
     case "live_mode_unavailable":
       return "Live mode unavailable";
+    case "remote_code_mode_disabled":
+      return "Remote code mode disabled";
     case "unsupported_safety_acknowledgement":
       return "Safety acknowledgement unavailable";
     case "run_already_active":

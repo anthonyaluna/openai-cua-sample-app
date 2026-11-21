@@ -104,6 +104,18 @@ export function createServer(options: CreateServerOptions = {}) {
 
   app.post("/api/runs", async (request, reply) => {
     const input = startRunRequestSchema.parse(request.body);
+
+    if (input.mode === "code") {
+      throw new RunnerCoreError(
+        "Code mode is disabled for remote run requests.",
+        {
+          code: "remote_code_mode_disabled",
+          hint: "Use native computer mode for remote runs.",
+          statusCode: 403,
+        },
+      );
+    }
+
     const detail = await manager.startRun(input);
 
     reply.code(202);

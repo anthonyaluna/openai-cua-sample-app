@@ -257,6 +257,42 @@ describe("runResponsesNativeComputerLoop", () => {
     ).toBe(true);
   });
 
+  it("rejects an unsolicited exec_js call in native mode", async () => {
+    const client = {
+      async create() {
+        return {
+          id: "resp_native_function_call",
+          output: [
+            {
+              arguments: JSON.stringify({
+                code: 'console.log("untrusted code executed");',
+              }),
+              call_id: "call_exec",
+              name: "exec_js",
+              type: "function_call" as const,
+            },
+          ],
+        };
+      },
+    };
+    const { context, events } = createMockExecutionContext();
+
+    await expect(
+      runResponsesNativeComputerLoop(
+        {
+          context: context as never,
+          instructions: "Use the computer tool until the task is complete.",
+          maxResponseTurns: 8,
+          session: createMockSession() as never,
+        },
+        client,
+      ),
+    ).rejects.toThrow("exec_js requires a vmContext.");
+    expect(
+      events.some((event) => event.type === "function_call_completed"),
+    ).toBe(false);
+  });
+
   it("throws a stable error when the API asks for a safety acknowledgement", async () => {
     const client = {
       async create() {

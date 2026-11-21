@@ -108,10 +108,21 @@ describe("OperatorConsole", () => {
       />,
     );
 
+    expect(screen.queryByRole("button", { name: "Code" })).toBeNull();
+    expect(
+      (screen.getByRole("combobox", { name: "Execution mode" }) as HTMLSelectElement)
+        .disabled,
+    ).toBe(true);
+
     await user.click(screen.getByRole("button", { name: "Start Run" }));
 
     await waitFor(() => {
       expect(screen.getByText("Runner missing API key")).toBeTruthy();
+    });
+    const startRequest = fetchMock.mock.calls[0];
+    const requestInit = startRequest?.[1] as RequestInit | undefined;
+    expect(JSON.parse(String(requestInit?.body))).toMatchObject({
+      mode: "native",
     });
     expect(
       screen.getAllByText(
