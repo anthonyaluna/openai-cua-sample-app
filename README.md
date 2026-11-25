@@ -148,6 +148,7 @@ See [.env.example](.env.example) for a minimal local template.
 - This repo is intentionally browser-focused. Workspace patching and file-editing scenarios are out of scope for the OSS release branch.
 - Pending computer-use safety acknowledgements are not implemented in this sample yet. Runs fail with the stable code `unsupported_safety_acknowledgement` when the API asks for one.
 - The operator console uses the loopback runner by default. For a non-loopback API listener, generate a unique private `RUNNER_AUTH_TOKEN` and use authenticated HTTPS. API clients must supply it in the `Authorization: Bearer` header. Browser requests additionally require the exact `RUNNER_WEB_ORIGIN`. The sample console does not send remote credentials.
+- Keep the runner data directory and its parent directories writable only by trusted operators. On Linux, screenshot reads require procfs to verify the actual opened file. Other platforms check the canonical path and file type and rely on directory ownership to prevent concurrent path changes.
 - The public scenarios are local labs designed for deterministic verification. They are not intended as proofs of general web autonomy.
 
 ## Release Validation Checklist
