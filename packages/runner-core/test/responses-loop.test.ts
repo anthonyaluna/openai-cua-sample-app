@@ -300,7 +300,7 @@ describe("runResponsesNativeComputerLoop", () => {
           id: "resp_safety",
           output: [
             {
-              actions: [{ type: "screenshot" }],
+              actions: [{ type: "click", x: 20, y: 20 }],
               call_id: "call_safety",
               pending_safety_checks: [
                 {
@@ -315,6 +315,11 @@ describe("runResponsesNativeComputerLoop", () => {
       },
     };
     const { context } = createMockExecutionContext();
+    const session = createMockSession();
+    let clickCount = 0;
+    session.page.mouse.click = async () => {
+      clickCount += 1;
+    };
 
     await expect(
       runResponsesNativeComputerLoop(
@@ -322,7 +327,7 @@ describe("runResponsesNativeComputerLoop", () => {
           context: context as never,
           instructions: "Use the computer tool until the task is complete.",
           maxResponseTurns: 4,
-          session: createMockSession() as never,
+          session: session as never,
         },
         client,
       ),
@@ -332,5 +337,6 @@ describe("runResponsesNativeComputerLoop", () => {
       message: expect.stringContaining("Pending computer use safety checks"),
       name: "RunnerCoreError",
     });
+    expect(clickCount).toBe(0);
   });
 });
