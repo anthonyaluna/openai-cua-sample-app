@@ -147,7 +147,7 @@ See [.env.example](.env.example) for a minimal local template.
 - Computer use remains high risk. Do not point this sample at authenticated, financial, medical, or otherwise high-stakes environments.
 - This repo is intentionally browser-focused. Workspace patching and file-editing scenarios are out of scope for the OSS release branch.
 - Pending computer-use safety acknowledgements are not implemented in this sample yet. Runs fail with the stable code `unsupported_safety_acknowledgement` when the API asks for one.
-- The runner stays on loopback by default. Non-loopback binding requires `RUNNER_AUTH_TOKEN`, and browser requests must use the configured `RUNNER_WEB_ORIGIN`.
+- The operator console uses the loopback runner by default. For a non-loopback API listener, generate a unique private `RUNNER_AUTH_TOKEN` and use authenticated HTTPS. API clients must supply it in the `Authorization: Bearer` header. Browser requests additionally require the exact `RUNNER_WEB_ORIGIN`. The sample console does not send remote credentials.
 - The public scenarios are local labs designed for deterministic verification. They are not intended as proofs of general web autonomy.
 
 ## Release Validation Checklist

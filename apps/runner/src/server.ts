@@ -1,6 +1,7 @@
-import { readFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { open, readlink, realpath } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { basename, isAbsolute, relative, resolve, sep } from "node:path";
+import { join, resolve } from "node:path";
 
 import Fastify, { type FastifyReply } from "fastify";
 
@@ -25,10 +26,24 @@ type CreateServerOptions = {
   manager?: RunnerManager;
   stepDelayMs?: number;
   authToken?: string;
+  host?: string;
   webOrigin?: string;
 };
 
 const defaultDataRoot = fileURLToPath(new URL("../../../data", import.meta.url));
+
+function isLoopback(address: string | undefined) {
+  return address === "localhost" || address === "127.0.0.1" ||
+    address === "::1" || address === "::ffff:127.0.0.1";
+}
+
+function missingArtifact() {
+  return new RunnerCoreError("Screenshot artifact not found", {
+    code: "artifact_not_found",
+    hint: "Refresh the run detail and choose a screenshot that still exists on disk.",
+    statusCode: 404,
+  });
+}
 
 function writeSseEvent(reply: FastifyReply, payload: unknown) {
   reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
@@ -43,37 +58,52 @@ export function createServer(options: CreateServerOptions = {}) {
       : { stepDelayMs: options.stepDelayMs }),
   };
   const manager = options.manager ?? new RunnerManager(managerOptions);
-  const authToken = options.authToken ?? process.env.RUNNER_AUTH_TOKEN;
+  const host = options.host ?? process.env.HOST ?? "127.0.0.1";
+  const authToken = (options.authToken ?? process.env.RUNNER_AUTH_TOKEN)?.trim();
+  if (!isLoopback(host) && !authToken) {
+    throw new Error("RUNNER_AUTH_TOKEN is required when the runner listens beyond loopback.");
+  }
   const webOrigin = options.webOrigin ?? process.env.RUNNER_WEB_ORIGIN ?? "http://127.0.0.1:3000";
+  const parsedOrigin = new URL(webOrigin);
+  if (!["http:", "https:"].includes(parsedOrigin.protocol) || parsedOrigin.origin !== webOrigin) {
+    throw new Error("RUNNER_WEB_ORIGIN must be an exact HTTP or HTTPS origin.");
+  }
   const app = Fastify({ logger: false });
 
   app.addHook("onRequest", async (request, reply) => {
-    const host = request.headers.host?.split(":", 1)[0];
-    const peer = request.ip ?? request.socket.remoteAddress;
-    const localPeer = peer === "127.0.0.1" || peer === "::1" || peer === "::ffff:127.0.0.1";
-    const localHost = host === "127.0.0.1" || host === "localhost" || host === "[::1]";
-    const remote = !localPeer || !localHost;
-    if (remote && !authToken) {
-      reply.code(503).send({ code: "remote_auth_not_configured", error: "Remote runner authentication is not configured." });
-      return;
-    }
-    if (remote && request.url !== "/health" && request.headers.authorization !== `Bearer ${authToken}`) {
-      reply.code(401).send({ code: "unauthorized", error: "A valid runner bearer token is required." });
-      return;
-    }
-  });
-
-  app.addHook("onSend", async (request, reply, payload) => {
     const origin = request.headers.origin;
-    if (origin && origin !== webOrigin) {
-      reply.code(403);
-      return JSON.stringify({ code: "origin_not_allowed", error: "The request origin is not allowed." });
+    reply.header("Vary", "Origin");
+    if (origin !== undefined) {
+      if (origin !== webOrigin) {
+        return reply.code(403).send({ code: "origin_not_allowed", error: "The request origin is not allowed." });
+      }
+      reply.header("Access-Control-Allow-Origin", webOrigin);
+      reply.header("Access-Control-Allow-Headers", "Authorization, Content-Type");
+      reply.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
     }
-    if (origin) reply.header("Access-Control-Allow-Origin", webOrigin);
-    reply.header("Access-Control-Allow-Headers", "content-type");
-    reply.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
 
-    return payload;
+    const localHost = /^(?:localhost|127\.0\.0\.1|\[::1\])(?::[0-9]+)?$/i.test(request.headers.host ?? "");
+    const bound = request.socket.localAddress;
+    const remote = !isLoopback(host) || !isLoopback(request.ip) || !localHost ||
+      (bound !== undefined && !isLoopback(bound));
+    if (remote && !authToken) {
+      return reply.code(503).send({ code: "remote_auth_not_configured", error: "Remote runner authentication is not configured." });
+    }
+    const preflight = request.method === "OPTIONS" && origin === webOrigin;
+    if (remote && !preflight && request.routeOptions.url !== "/health" &&
+        request.headers.authorization !== `Bearer ${authToken}`) {
+      return reply.code(401).send({ code: "unauthorized", error: "A valid runner bearer token is required." });
+    }
+
+    if (request.routeOptions.url?.startsWith("/api/runs/:id")) {
+      const { id, name } = request.params as { id: string; name?: string };
+      if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id)) {
+        if (name !== undefined) throw missingArtifact();
+        throw new RunnerCoreError("Run not found", {
+          code: "run_not_found", hint: "Start a new run and use its returned ID.", statusCode: 404,
+        });
+      }
+    }
   });
 
   app.options("*", async (_request, reply) => {
@@ -176,40 +206,29 @@ export function createServer(options: CreateServerOptions = {}) {
       !/^[A-Za-z0-9][A-Za-z0-9._-]*\.png$/.test(params.name) ||
       params.name.includes("..")
     ) {
-      reply.code(404);
-      return runnerErrorResponseSchema.parse({
-        code: "artifact_not_found",
-        error: "Screenshot artifact not found",
-        hint: "Refresh the run detail and choose a screenshot that still exists on disk.",
-      });
-    }
-    const screenshotRoot = resolve(resolvedDataRoot, "runs", params.id, "screenshots");
-    const screenshotPath = resolve(
-      screenshotRoot,
-      basename(params.name),
-    );
-    const screenshotRelativePath = relative(screenshotRoot, screenshotPath);
-    if (isAbsolute(screenshotRelativePath) || screenshotRelativePath.startsWith(`..${sep}`)) {
-      reply.code(404);
-      return runnerErrorResponseSchema.parse({
-        code: "artifact_not_found",
-        error: "Screenshot artifact not found",
-        hint: "Refresh the run detail and choose a screenshot that still exists on disk.",
-      });
+      throw missingArtifact();
     }
 
     try {
-      const payload = await readFile(screenshotPath);
-
-      reply.header("Content-Type", "image/png");
-      return payload;
+      const root = await realpath(resolvedDataRoot);
+      const path = join(root, "runs", params.id, "screenshots", params.name);
+      if (await realpath(path) !== path) throw missingArtifact();
+      const file = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+      try {
+        // On Linux verify the kernel path of the open file before reading it,
+        // including ancestors that could have changed after path validation.
+        if (process.platform === "linux" && await readlink(`/proc/self/fd/${file.fd}`) !== path) {
+          throw missingArtifact();
+        }
+        if (!(await file.stat()).isFile()) throw missingArtifact();
+        const payload = await file.readFile();
+        reply.header("Content-Type", "image/png");
+        return payload;
+      } finally {
+        await file.close();
+      }
     } catch {
-      reply.code(404);
-      return runnerErrorResponseSchema.parse({
-        code: "artifact_not_found",
-        error: "Screenshot artifact not found",
-        hint: "Refresh the run detail and choose a screenshot that still exists on disk.",
-      });
+      throw missingArtifact();
     }
   });
 
@@ -218,9 +237,8 @@ export function createServer(options: CreateServerOptions = {}) {
     const detail = await manager.getRunDetail(runId);
 
     reply.raw.writeHead(200, {
-      ...(request.headers.origin
-        ? { "Access-Control-Allow-Origin": webOrigin }
-        : {}),
+      ...(request.headers.origin === webOrigin ? { "Access-Control-Allow-Origin": webOrigin } : {}),
+      Vary: "Origin",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
       "Content-Type": "text/event-stream",
