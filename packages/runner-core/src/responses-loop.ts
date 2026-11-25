@@ -619,36 +619,40 @@ async function executeComputerAction(
   }
 }
 
+async function rejectPendingSafetyChecks(
+  input: ResponsesLoopContext,
+  computerCall: ComputerCallItem,
+) {
+  const pendingSafetyChecks = computerCall.pending_safety_checks ?? [];
+  if (pendingSafetyChecks.length === 0) return;
+
+  const detail = pendingSafetyChecks
+    .map((check) => check.message ?? check.code ?? "Unknown safety check")
+    .join(" | ");
+
+  await input.context.emitEvent({
+    detail,
+    level: "warn",
+    message: "Computer use safety acknowledgement is required before the run can continue.",
+    type: "run_progress",
+  });
+
+  throw new RunnerCoreError(
+    "Pending computer use safety checks require explicit operator acknowledgement, which is not implemented in this harness yet.",
+    {
+      code: "unsupported_safety_acknowledgement",
+      hint: "This sample app does not implement operator approval for pending safety checks yet. Retry with a task that does not trigger a safety acknowledgement.",
+      statusCode: 400,
+    },
+  );
+}
+
 async function buildComputerCallOutput(
   input: ResponsesLoopContext,
   computerCall: ComputerCallItem,
   artifactLabel: string,
 ) {
-  const pendingSafetyChecks = computerCall.pending_safety_checks ?? [];
-
-  if (pendingSafetyChecks.length > 0) {
-    const detail = pendingSafetyChecks
-      .map((check) => check.message ?? check.code ?? "Unknown safety check")
-      .join(" | ");
-
-    await input.context.emitEvent({
-      detail,
-      level: "warn",
-      message:
-        "Computer use safety acknowledgement is required before the run can continue.",
-      type: "run_progress",
-    });
-
-    throw new RunnerCoreError(
-      "Pending computer use safety checks require explicit operator acknowledgement, which is not implemented in this harness yet.",
-      {
-        code: "unsupported_safety_acknowledgement",
-        hint:
-          "This sample app does not implement operator approval for pending safety checks yet. Retry with a task that does not trigger a safety acknowledgement.",
-        statusCode: 400,
-      },
-    );
-  }
+  await rejectPendingSafetyChecks(input, computerCall);
 
   await input.context.syncBrowserState(input.session);
   const screenshotArtifact = await input.context.captureScreenshot(
@@ -863,6 +867,8 @@ export async function runResponsesNativeComputerLoop(
       }
 
       const actions = outputItem.actions ?? [];
+
+      await rejectPendingSafetyChecks(input, outputItem);
 
       await input.context.emitEvent({
         detail: formatActionBatchDetail(actions),

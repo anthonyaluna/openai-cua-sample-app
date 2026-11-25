@@ -142,6 +142,59 @@ describe("runner server", () => {
     }
   });
 
+  it("requires a bearer token for non-loopback runner requests", async () => {
+    const app = createServer({ authToken: "test-runner-token", webOrigin: "http://127.0.0.1:3000" });
+
+    try {
+      const missing = await app.inject({
+        headers: { host: "runner.example.test" },
+        method: "GET",
+        url: "/api/scenarios",
+      });
+      expect(missing.statusCode).toBe(401);
+
+      const allowed = await app.inject({
+        headers: {
+          authorization: "Bearer test-runner-token",
+          host: "runner.example.test",
+          origin: "http://127.0.0.1:3000",
+        },
+        method: "GET",
+        url: "/api/scenarios",
+      });
+      expect(allowed.statusCode).toBe(200);
+
+      const wrongOrigin = await app.inject({
+        headers: {
+          authorization: "Bearer test-runner-token",
+          host: "runner.example.test",
+          origin: "https://untrusted.example.test",
+        },
+        method: "GET",
+        url: "/api/scenarios",
+      });
+      expect(wrongOrigin.statusCode).toBe(403);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("rejects malformed screenshot artifact paths before reading files", async () => {
+    const app = createServer();
+
+    try {
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/runs/not-a-run/artifacts/screenshots/.env",
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toMatchObject({ code: "artifact_not_found" });
+    } finally {
+      await app.close();
+    }
+  });
+
   it("returns the structured error envelope for invalid requests", async () => {
     const app = createServer();
 

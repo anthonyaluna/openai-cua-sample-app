@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { basename, resolve } from "node:path";
+import { basename, isAbsolute, relative, resolve, sep } from "node:path";
 
 import Fastify, { type FastifyReply } from "fastify";
 
@@ -24,6 +24,8 @@ type CreateServerOptions = {
   dataRoot?: string;
   manager?: RunnerManager;
   stepDelayMs?: number;
+  authToken?: string;
+  webOrigin?: string;
 };
 
 const defaultDataRoot = fileURLToPath(new URL("../../../data", import.meta.url));
@@ -41,10 +43,33 @@ export function createServer(options: CreateServerOptions = {}) {
       : { stepDelayMs: options.stepDelayMs }),
   };
   const manager = options.manager ?? new RunnerManager(managerOptions);
+  const authToken = options.authToken ?? process.env.RUNNER_AUTH_TOKEN;
+  const webOrigin = options.webOrigin ?? process.env.RUNNER_WEB_ORIGIN ?? "http://127.0.0.1:3000";
   const app = Fastify({ logger: false });
 
-  app.addHook("onSend", async (_request, reply, payload) => {
-    reply.header("Access-Control-Allow-Origin", "*");
+  app.addHook("onRequest", async (request, reply) => {
+    const host = request.headers.host?.split(":", 1)[0];
+    const peer = request.ip ?? request.socket.remoteAddress;
+    const localPeer = peer === "127.0.0.1" || peer === "::1" || peer === "::ffff:127.0.0.1";
+    const localHost = host === "127.0.0.1" || host === "localhost" || host === "[::1]";
+    const remote = !localPeer || !localHost;
+    if (remote && !authToken) {
+      reply.code(503).send({ code: "remote_auth_not_configured", error: "Remote runner authentication is not configured." });
+      return;
+    }
+    if (remote && request.url !== "/health" && request.headers.authorization !== `Bearer ${authToken}`) {
+      reply.code(401).send({ code: "unauthorized", error: "A valid runner bearer token is required." });
+      return;
+    }
+  });
+
+  app.addHook("onSend", async (request, reply, payload) => {
+    const origin = request.headers.origin;
+    if (origin && origin !== webOrigin) {
+      reply.code(403);
+      return JSON.stringify({ code: "origin_not_allowed", error: "The request origin is not allowed." });
+    }
+    if (origin) reply.header("Access-Control-Allow-Origin", webOrigin);
     reply.header("Access-Control-Allow-Headers", "content-type");
     reply.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
 
@@ -146,13 +171,32 @@ export function createServer(options: CreateServerOptions = {}) {
 
   app.get("/api/runs/:id/artifacts/screenshots/:name", async (request, reply) => {
     const params = request.params as { id: string; name: string };
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(params.id) ||
+      !/^[A-Za-z0-9][A-Za-z0-9._-]*\.png$/.test(params.name) ||
+      params.name.includes("..")
+    ) {
+      reply.code(404);
+      return runnerErrorResponseSchema.parse({
+        code: "artifact_not_found",
+        error: "Screenshot artifact not found",
+        hint: "Refresh the run detail and choose a screenshot that still exists on disk.",
+      });
+    }
+    const screenshotRoot = resolve(resolvedDataRoot, "runs", params.id, "screenshots");
     const screenshotPath = resolve(
-      resolvedDataRoot,
-      "runs",
-      params.id,
-      "screenshots",
+      screenshotRoot,
       basename(params.name),
     );
+    const screenshotRelativePath = relative(screenshotRoot, screenshotPath);
+    if (isAbsolute(screenshotRelativePath) || screenshotRelativePath.startsWith(`..${sep}`)) {
+      reply.code(404);
+      return runnerErrorResponseSchema.parse({
+        code: "artifact_not_found",
+        error: "Screenshot artifact not found",
+        hint: "Refresh the run detail and choose a screenshot that still exists on disk.",
+      });
+    }
 
     try {
       const payload = await readFile(screenshotPath);
@@ -174,7 +218,9 @@ export function createServer(options: CreateServerOptions = {}) {
     const detail = await manager.getRunDetail(runId);
 
     reply.raw.writeHead(200, {
-      "Access-Control-Allow-Origin": "*",
+      ...(request.headers.origin
+        ? { "Access-Control-Allow-Origin": webOrigin }
+        : {}),
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
       "Content-Type": "text/event-stream",

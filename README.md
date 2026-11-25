@@ -129,6 +129,8 @@ Runner:
 - `OPENAI_API_KEY`
 - `HOST` (default `127.0.0.1`)
 - `PORT` (default `4001`)
+- `RUNNER_AUTH_TOKEN` (required when `HOST` is not loopback)
+- `RUNNER_WEB_ORIGIN` (default `http://127.0.0.1:3000`)
 - `CUA_DEFAULT_MODEL` (default `gpt-5.4`)
 - `CUA_RESPONSES_MODE` (`auto`, `fallback`, or `live`)
 
@@ -145,6 +147,7 @@ See [.env.example](.env.example) for a minimal local template.
 - Computer use remains high risk. Do not point this sample at authenticated, financial, medical, or otherwise high-stakes environments.
 - This repo is intentionally browser-focused. Workspace patching and file-editing scenarios are out of scope for the OSS release branch.
 - Pending computer-use safety acknowledgements are not implemented in this sample yet. Runs fail with the stable code `unsupported_safety_acknowledgement` when the API asks for one.
+- The runner stays on loopback by default. Non-loopback binding requires `RUNNER_AUTH_TOKEN`, and browser requests must use the configured `RUNNER_WEB_ORIGIN`.
 - The public scenarios are local labs designed for deterministic verification. They are not intended as proofs of general web autonomy.
 
 ## Release Validation Checklist
